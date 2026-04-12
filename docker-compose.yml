@@ -1,0 +1,223 @@
+services:
+
+  # ============================================================
+  # Samba ファイル共有
+  # ============================================================
+  # NOTE: dperson/samba はアーカイブ済み（メンテ終了）
+  # 将来的に ghcr.io/servercontainers/samba への移行を推奨
+  samba:
+    image: dperson/samba
+    container_name: samba
+    restart: unless-stopped
+    ports:
+      - "1139:139"
+      - "1445:445"
+    volumes:
+      - /mnt/nas/share:/share
+    command: >
+      -u "${SAMBA_USER};${SAMBA_PASS}"
+      -s "share;/share;yes;no;no;${SAMBA_USER}"
+
+  # ============================================================
+  # Time Machine バックアップ
+  # ============================================================
+  timemachine:
+    image: mbentley/timemachine:smb
+    container_name: timemachine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - ADVERTISED_HOSTNAME=NAS-TimeMachine
+      - SMB_USER=${TM_USER}
+      - SMB_PASS=${TM_PASS}
+      - VOLUME_SIZE_LIMIT=2T
+    volumes:
+      - /mnt/nas/timemachine:/opt/timemachine
+
+  # ============================================================
+  # Immich 写真管理
+  # ============================================================
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:release
+    container_name: immich_server
+    restart: unless-stopped
+    ports:
+      - "2283:2283"
+    volumes:
+      - /mnt/nas/photos:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - DB_HOSTNAME=immich-postgres
+      - DB_USERNAME=${IMMICH_DB_USER}
+      - DB_PASSWORD=${IMMICH_DB_PASS}
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis
+    depends_on:
+      - immich-redis
+      - immich-postgres
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    container_name: immich_ml
+    restart: unless-stopped
+    volumes:
+      - immich-model-cache:/cache
+
+  immich-redis:
+    image: redis:6.2-alpine
+    container_name: immich_redis
+    restart: unless-stopped
+
+  immich-postgres:
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    container_name: immich_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${IMMICH_DB_USER}
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASS}
+      - POSTGRES_DB=immich
+    volumes:
+      - immich-pgdata:/var/lib/postgresql/data
+
+  # ============================================================
+  # Nextcloud
+  # ============================================================
+  nextcloud:
+    build: ./nextcloud-custom
+    container_name: nextcloud
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - /mnt/nas/documents:/var/www/html/data
+      - nextcloud-config:/var/www/html/config
+      - ./nextcloud-custom/upload-limit.ini:/usr/local/etc/php/conf.d/upload-limit.ini:ro
+    environment:
+      - MYSQL_HOST=nextcloud-db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=${NC_DB_USER}
+      - MYSQL_PASSWORD=${NC_DB_PASS}
+      - NEXTCLOUD_ADMIN_USER=${NC_ADMIN_USER}
+      - NEXTCLOUD_ADMIN_PASSWORD=${NC_ADMIN_PASS}
+      - REDIS_HOST=nextcloud-redis
+      - APACHE_BODY_LIMIT=0
+    depends_on:
+      - nextcloud-db
+      - nextcloud-redis
+
+  nextcloud-db:
+    image: mariadb:10.11
+    container_name: nextcloud_db
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+    environment:
+      - MYSQL_ROOT_PASSWORD=${NC_DB_ROOT_PASS}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=${NC_DB_USER}
+      - MYSQL_PASSWORD=${NC_DB_PASS}
+    volumes:
+      - nextcloud-dbdata:/var/lib/mysql
+
+  # Nextcloud ファイルロック用 Redis
+  nextcloud-redis:
+    image: redis:7-alpine
+    container_name: nextcloud_redis
+    restart: unless-stopped
+
+  # Nextcloud バックグラウンドジョブ（5分ごと）
+  nextcloud-cron:
+    build: ./nextcloud-custom
+    container_name: nextcloud_cron
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command: -c 'while true; do php -f /var/www/html/cron.php; sleep 300; done'
+    volumes:
+      - /mnt/nas/documents:/var/www/html/data
+      - nextcloud-config:/var/www/html/config
+      - ./nextcloud-custom/upload-limit.ini:/usr/local/etc/php/conf.d/upload-limit.ini:ro
+    depends_on:
+      - nextcloud
+      - nextcloud-db
+      - nextcloud-redis
+    user: www-data
+
+  # ============================================================
+  # Local LLM (Ollama + Open WebUI)
+  # ============================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+
+  # ============================================================
+  # Netdata システム監視
+  # ============================================================
+  netdata:
+    image: netdata/netdata:latest
+    container_name: netdata
+    restart: unless-stopped
+    pid: host
+    ports:
+      - "19999:19999"
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - netdataconfig:/etc/netdata
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+      - /:/host/root:ro,rslave
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/hostname:/host/etc/hostname:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # ============================================================
+  # Pi-hole DNS広告ブロック
+  # ============================================================
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=Asia/Tokyo
+      - WEBPASSWORD=${PIHOLE_WEBPASSWORD}
+      - FTLCONF_LOCAL_IPV4=${SERVER_IP}
+      - FTLCONF_webserver_port=8888
+    volumes:
+      - pihole-config:/etc/pihole
+      - pihole-dnsmasq:/etc/dnsmasq.d
+
+volumes:
+  immich-model-cache:
+  immich-pgdata:
+  nextcloud-config:
+  nextcloud-dbdata:
+  pihole-config:
+  pihole-dnsmasq:
+  ollama-data:
+  open-webui-data:
+  netdataconfig:
+  netdatalib:
+  netdatacache:
