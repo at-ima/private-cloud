@@ -83,6 +83,24 @@ docker compose up -d
 docker compose down
 ```
 
+### 5. アップデート（全サービス一括更新）
+
+イメージの更新を取得し、すべてのコンテナを作り直す。
+
+```bash
+docker compose pull && docker compose up -d --build --force-recreate
+```
+
+- `pull` — 最新イメージをレジストリから取得
+- `--build` — カスタムDockerfile（Nextcloud）を再ビルド
+- `--force-recreate` — イメージに変更がないコンテナも含めて強制的に作り直す
+
+使わなくなった古いイメージはまとめて削除できる。
+
+```bash
+docker image prune -f
+```
+
 ## 各サービスの詳細
 
 ### Samba
