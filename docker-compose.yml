@@ -101,6 +101,7 @@ services:
       - NEXTCLOUD_ADMIN_PASSWORD=${NC_ADMIN_PASS}
       - REDIS_HOST=nextcloud-redis
       - APACHE_BODY_LIMIT=0
+      - NEXTCLOUD_TRUSTED_DOMAINS=*
     depends_on:
       - nextcloud-db
       - nextcloud-redis
