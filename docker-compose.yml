@@ -28,11 +28,14 @@ services:
     network_mode: host
     environment:
       - ADVERTISED_HOSTNAME=NAS-TimeMachine
-      - TM_USERNAME=${TM_USER}
-      - PASSWORD=${TM_PASS}
-      - VOLUME_SIZE_LIMIT=2T
+      - EXTERNAL_CONF=/config
+      - TM_USER=${TM_USER}
+      - TM_PASS=${TM_PASS}
+      - TM_USER2=${TM_USER2}
+      - TM_PASS2=${TM_PASS2}
     volumes:
       - /mnt/nas/timemachine:/opt/timemachine
+      - ./timemachine-conf:/config:ro
 
   # ============================================================
   # Immich 写真管理

@@ -21,6 +21,7 @@ MacBook は自宅LANに繋ぐだけで Time Machine バックアップが自動�
 ```text
 docker/
 ├── docker-compose.yml
+├── timemachine-conf/    # Time Machine ユーザーごとの設定（gitignore対象、各自作成）
 └── nextcloud-custom/   # Nextcloud カスタムDockerfile
     ├── Dockerfile
     ├── upload-limit.ini
@@ -38,9 +39,13 @@ docker/
 SAMBA_USER=your_user
 SAMBA_PASS=your_password
 
-# Time Machine
+# Time Machine（1台目）
 TM_USER=your_user
 TM_PASS=your_password
+
+# Time Machine（2台目）
+TM_USER2=your_user2
+TM_PASS2=your_password2
 
 # Immich
 IMMICH_DB_USER=immich
@@ -116,6 +121,8 @@ docker image prune -f
 
 - ホストネットワーク使用（Bonjour/mDNS で自動検出）
 - バックアップサイズ上限: 2TB
+- 複数Mac対応: `EXTERNAL_CONF` でユーザーごとの設定ファイル（`timemachine-conf/*.conf`）を読み込む方式。各ファイルで `TM_USERNAME` / `PASSWORD` / `TM_GROUPNAME` / `SHARE_NAME` / `SHARE_PATH`（`/opt/timemachine/<ユーザー名>`）/ `TM_UID` を指定する。パスワード等の実値は `.env` の変数（`${TM_USER}` など）を参照する形にしており、confファイル自体は秘密情報を含まないが、ユーザー名などが個人を特定しうるため `timemachine-conf/.gitignore` で git 管理対象外にしている
+- Macを追加する場合: `timemachine-conf/` に新しい `.conf` ファイルを作り、`.env` に対応する `TM_USER*`/`TM_PASS*` を追加、`docker-compose.yml` の `timemachine` サービスの `environment` にもその変数を渡してから `docker compose up -d timemachine` で再作成する
 
 ### Immich
 
