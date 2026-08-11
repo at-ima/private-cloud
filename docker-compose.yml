@@ -72,7 +72,8 @@ services:
     restart: unless-stopped
 
   immich-postgres:
-    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    # Keeps pgvecto.rs available while Immich migrates existing data to VectorChord.
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
     container_name: immich_postgres
     restart: unless-stopped
     environment:
@@ -81,6 +82,7 @@ services:
       - POSTGRES_DB=immich
     volumes:
       - immich-pgdata:/var/lib/postgresql/data
+    shm_size: 128mb
 
   # ============================================================
   # Nextcloud
